@@ -3,7 +3,7 @@ from SoapySDR import * #SOAPY_SDR_* constants
 
 import numpy as np
 
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 import time
 
@@ -47,20 +47,20 @@ if __name__ == '__main__':
     streamBoardSDR.setBandwidth(SOAPY_SDR_RX, 0, 10e6)
     streamBoardSDR.setBandwidth(SOAPY_SDR_RX, 1, 10e6)
 
-    print("Enable Rx TSG")
-    streamBoardSDR.writeSetting("ACTIVE_CHANNEL", "A");
-    streamBoardSDR.writeSetting("ENABLE_RXTSP_CONST", "true");
-    streamBoardSDR.writeSetting("ACTIVE_CHANNEL", "B");
-    streamBoardSDR.writeSetting("ENABLE_RXTSP_CONST", "true");
+    #print("Enable Rx TSG")
+    #streamBoardSDR.writeSetting("ACTIVE_CHANNEL", "A");
+    #streamBoardSDR.writeSetting("ENABLE_RXTSP_CONST", "true");
+    #streamBoardSDR.writeSetting("ACTIVE_CHANNEL", "B");
+    #streamBoardSDR.writeSetting("ENABLE_RXTSP_CONST", "true");
 
     print("Create rx stream")
     rxStream = streamBoardSDR.setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32, [0, 1])
     sampsCh0 = np.array([0]*1024, np.complex64)
     sampsCh1 = np.array([0]*1024, np.complex64)
 
-    print("Create tx stream")
-    txStream = streamBoardSDR.setupStream(SOAPY_SDR_TX, SOAPY_SDR_CF32, [0, 1])
-    streamBoardSDR.activateStream(txStream)
+    #print("Create tx stream")
+    #txStream = streamBoardSDR.setupStream(SOAPY_SDR_TX, SOAPY_SDR_CF32, [0, 1])
+    #streamBoardSDR.activateStream(txStream)
 
     #print(">>> test tx late burst")
     #timeStream = streamBoardSDR.getHardwareTime() + int(1e8) #100ms in the future
@@ -77,6 +77,7 @@ if __name__ == '__main__':
     sr = streamBoardSDR.readStream(rxStream, [sampsCh0, sampsCh1], sampsCh0.size, 0)
     assert sr.ret == SOAPY_SDR_TIMEOUT
 
+    """
     print(">>> test larger burst aquisition")
     totalSamps = 1024*100
     streamBoardSDR.activateStream(rxStream, SOAPY_SDR_END_BURST, 0, totalSamps)
@@ -132,9 +133,10 @@ if __name__ == '__main__':
     plt.legend()
     plt.ylabel('some numbers')
     plt.show()
+    """
 
     print("Cleanup rx stream")
     streamBoardSDR.deactivateStream(rxStream)
-    streamBoardSDR.deactivateStream(txStream)
+    #streamBoardSDR.deactivateStream(txStream)
     streamBoardSDR.closeStream(rxStream)
-    streamBoardSDR.closeStream(txStream)
+    #streamBoardSDR.closeStream(txStream)

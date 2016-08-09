@@ -21,6 +21,8 @@ using namespace lime;
 #define LTE_CHAN_COUNT 2
 #define STREAM_MTU (PacketFrame::maxSamplesInPacket/(LTE_CHAN_COUNT))
 
+#define __HERE() printf("----------> %s (%s:%d)\n", __FUNCTION__, __FILE__, __LINE__)
+
 /***********************************************************************
  * Custom StreamerLTE for streaming API hooks
  **********************************************************************/
@@ -34,7 +36,8 @@ struct USBStreamService : StreamerLTE
     ):
         StreamerLTE(dataPort),
         format(format),
-        rxStreamUseCount(1), //always need rx for status reporting
+        //rxStreamUseCount(1), //always need rx for status reporting
+        rxStreamUseCount(0), //off by default
         txStreamUseCount(0),
         mTxThread(nullptr),
         mRxThread(nullptr),
@@ -43,6 +46,7 @@ struct USBStreamService : StreamerLTE
         mTimestampOffset(0),
         mHwCounterRate(10e6)
     {
+        __HERE();
         mRxFIFO->Reset(2*4096, channelsCount);
         mTxFIFO->Reset(2*4096, channelsCount);
 
@@ -57,6 +61,7 @@ struct USBStreamService : StreamerLTE
         rfic.Modify_SPI_Reg_bits(LML2_MODE, 0, true); //TRXIQ
 
         //switch off Rx/Tx
+        std::cout << "---- SWITCH OFF RX FPGA ----\n";
         uint16_t interface_ctrl_000A = Reg_read(dataPort, 0x000A);
         Reg_write(dataPort, 0x000A, interface_ctrl_000A & ~0x3);
 
@@ -105,17 +110,20 @@ struct USBStreamService : StreamerLTE
         rfic.SPI_write(0x0020, reg20);
 
         //switch on Rx
-        interface_ctrl_000A = Reg_read(mDataPort, 0x000A);
-        Reg_write(mDataPort, 0x000A, interface_ctrl_000A | 0x1);
+        //std::cout << "---- SWITCH ON RX FPGA ----\n";
+        //interface_ctrl_000A = Reg_read(mDataPort, 0x000A);
+        //Reg_write(mDataPort, 0x000A, interface_ctrl_000A | 0x1);
     }
 
     ~USBStreamService(void)
     {
+        __HERE();
         this->updateThreadState(true);
     }
 
     void updateThreadState(const bool forceStop = false)
     {
+        __HERE();
         auto reporter = std::bind(&USBStreamService::handleRxStatus, this, std::placeholders::_1, std::placeholders::_2);
         auto getRxCmd = std::bind(&ConcurrentQueue<RxCommand>::try_pop, &mRxCmdQueue, std::placeholders::_1);
 
@@ -138,6 +146,7 @@ struct USBStreamService : StreamerLTE
 
         if (mRxThread == nullptr and rxStreamUseCount != 0 and not forceStop)
         {
+            std::cout << "---- START THE RX THREAD ----\n";
             //restore stream state continuous
             if (rxStreamingContinuous)
             {
@@ -157,10 +166,15 @@ struct USBStreamService : StreamerLTE
             {
                 mRxThread = new std::thread(ReceivePacketsUncompressed, threadRxArgs);
             }
+
+            std::cout << "---- SWITCH ON RX FPGA ----\n";
+            uint16_t interface_ctrl_000A = Reg_read(mDataPort, 0x000A);
+            Reg_write(mDataPort, 0x000A, interface_ctrl_000A | 0x1);
         }
 
         if (mTxThread == nullptr and txStreamUseCount != 0 and not forceStop)
         {
+            std::cout << "---- START THE TX THREAD ----\n";
             if (format == STREAM_12_BIT_COMPRESSED)
             {
                 mTxThread = new std::thread(TransmitPackets, threadTxArgs);
@@ -173,6 +187,7 @@ struct USBStreamService : StreamerLTE
 
         if ((forceStop or txStreamUseCount == 0) and mTxThread != nullptr)
         {
+            std::cout << "---- STOP THE TX THREAD ----\n";
             stopTx = true;
             mTxThread->join();
             delete mTxThread;
@@ -181,6 +196,11 @@ struct USBStreamService : StreamerLTE
 
         if ((forceStop or rxStreamUseCount == 0) and mRxThread != nullptr)
         {
+            std::cout << "---- SWITCH OFF RX FPGA ----\n";
+            uint16_t interface_ctrl_000A = Reg_read(mDataPort, 0x000A);
+            Reg_write(mDataPort, 0x000A, interface_ctrl_000A & ~0x3);
+
+            std::cout << "---- STOP THE RX THREAD ----\n";
             stopRx = true;
             mRxThread->join();
             delete mRxThread;
@@ -190,6 +210,7 @@ struct USBStreamService : StreamerLTE
 
     void start(void)
     {
+        __HERE();
         if (mHwCounterRate == 0.0) return; //not configured
         //clear any residual data from FIFO
         ResetUSBFIFO(dynamic_cast<LMS64CProtocol *>(mDataPort));
@@ -201,6 +222,7 @@ struct USBStreamService : StreamerLTE
         rfic.Modify_SPI_Reg_bits(0x0020, 15, 6, 0xff);
 
         //switch on Rx
+        std::cout << "---- SWITCH ON RX FPGA ----\n";
         uint16_t interface_ctrl_000A = Reg_read(mDataPort, 0x000A);
         Reg_write(mDataPort, 0x000A, interface_ctrl_000A | 0x1);
 
@@ -209,9 +231,11 @@ struct USBStreamService : StreamerLTE
 
     void stop(void)
     {
+        __HERE();
         //stop threads first, then disable FPGA
         this->updateThreadState(true);
         //stop Tx Rx if they were active
+        std::cout << "---- SWITCH OFF RX FPGA ----\n";
         uint16_t interface_ctrl_000A = Reg_read(mDataPort, 0x000A);
         Reg_write(mDataPort, 0x000A, interface_ctrl_000A & ~0x3);
     }
@@ -282,6 +306,7 @@ struct USBStreamServiceChannel
         nextTimestamp(0),
         currentFifoFlags(0)
     {
+        __HERE();
         for (size_t i = 0; i < channelsCount; i++)
         {
             FIFOBuffers.push_back(new complex16_t[STREAM_MTU]);
@@ -290,6 +315,7 @@ struct USBStreamServiceChannel
 
     ~USBStreamServiceChannel(void)
     {
+        __HERE();
         for (size_t i = 0; i < channelsCount; i++)
         {
             delete [] FIFOBuffers[i];
@@ -354,6 +380,7 @@ std::string ConnectionSTREAM::SetupStream(size_t &streamID, const StreamConfig &
 
 void ConnectionSTREAM::CloseStream(const size_t streamID)
 {
+        __HERE();
     auto *stream = (USBStreamServiceChannel *)streamID;
 
     if (stream->isTx) mStreamService->txStreamUseCount--;
@@ -370,6 +397,7 @@ size_t ConnectionSTREAM::GetStreamSize(const size_t streamID)
 
 bool ConnectionSTREAM::ControlStream(const size_t streamID, const bool enable, const size_t burstSize, const StreamMetadata &metadata)
 {
+        __HERE();
     auto *stream = (USBStreamServiceChannel *)streamID;
 
     if (!stream->isTx)
@@ -598,12 +626,20 @@ void ConnectionSTREAM::UpdateExternalDataRate(const size_t channel, const double
 
 void ConnectionSTREAM::EnterSelfCalibration(const size_t channel)
 {
-    if (mStreamService) mStreamService->stop();
+    if (mStreamService and (mStreamService->txStreamUseCount+mStreamService->rxStreamUseCount) != 0)
+    {
+        __HERE();
+        mStreamService->stop();
+    }
 }
 
 void ConnectionSTREAM::ExitSelfCalibration(const size_t channel)
 {
-    if (mStreamService) mStreamService->start();
+    if (mStreamService and (mStreamService->txStreamUseCount+mStreamService->rxStreamUseCount) != 0)
+    {
+        __HERE();
+        mStreamService->start();
+    }
 }
 
 uint64_t ConnectionSTREAM::GetHardwareTimestamp(void)
@@ -613,6 +649,7 @@ uint64_t ConnectionSTREAM::GetHardwareTimestamp(void)
 
 void ConnectionSTREAM::SetHardwareTimestamp(const uint64_t now)
 {
+        __HERE();
     if (not mStreamService) mStreamService.reset(new USBStreamService(this));
     mStreamService->mTimestampOffset = int64_t(now)-int64_t(mStreamService->mLastRxTimestamp);
 }
