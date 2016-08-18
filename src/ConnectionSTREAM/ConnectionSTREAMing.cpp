@@ -51,7 +51,6 @@ struct USBStreamService : StreamerLTE
         mTxFIFO->Reset(2*4096, channelsCount);
 
         //configure LML clocking
-        LMS7002M rfic;
         rfic.SetConnection(dataPort);
         rfic.Modify_SPI_Reg_bits(FCLK1_INV, 1, true);
         rfic.Modify_SPI_Reg_bits(FCLK2_INV, 1, true);
@@ -118,7 +117,7 @@ struct USBStreamService : StreamerLTE
     ~USBStreamService(void)
     {
         __HERE();
-        this->updateThreadState(true);
+        this->stop();
     }
 
     void updateThreadState(const bool forceStop = false)
@@ -216,10 +215,9 @@ struct USBStreamService : StreamerLTE
         ResetUSBFIFO(dynamic_cast<LMS64CProtocol *>(mDataPort));
 
         //reset/clear LML FIFOs and other state
-        LMS7002M rfic;
-        rfic.SetConnection(mDataPort);
-        rfic.Modify_SPI_Reg_bits(0x0020, 15, 6, 0x00);
-        rfic.Modify_SPI_Reg_bits(0x0020, 15, 6, 0xff);
+        uint16_t reg20 = rfic.SPI_read(0x0020, true);
+        rfic.SPI_write(0x0020, reg20 & ~0xAA00);
+        rfic.SPI_write(0x0020, reg20);
 
         //switch on Rx
         std::cout << "---- SWITCH ON RX FPGA ----\n";
@@ -279,6 +277,7 @@ struct USBStreamService : StreamerLTE
         return mTxFIFO;
     }
 
+    LMS7002M rfic; //for LML setup registers
     const StreamDataFormat format;
     std::atomic<int> rxStreamUseCount;
     std::atomic<int> txStreamUseCount;
@@ -365,8 +364,7 @@ std::string ConnectionSTREAM::SetupStream(size_t &streamID, const StreamConfig &
     auto s0 = pos0isA?LMS7002M::AI:LMS7002M::BI;
 
     //configure LML based on channel config
-    LMS7002M rfic;
-    rfic.SetConnection(this);
+    auto &rfic = mStreamService->rfic;
     if (config.isTx) rfic.ConfigureLML_BB2RF(s1, s0, s3, s2); //intentional swap
     else             rfic.ConfigureLML_RF2BB(s0, s1, s2, s3);
 
