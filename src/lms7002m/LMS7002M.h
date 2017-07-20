@@ -14,6 +14,7 @@
 #include <stdarg.h>
 #include <functional>
 #include <vector>
+#include "host.h"
 
 namespace lime{
 class IConnection;
@@ -42,6 +43,8 @@ typedef double float_type;
 class LIME_API LMS7002M
 {
 public:
+    Controller remoteCtr;
+    void spiOp(Controller::Packet in, Controller::Packet *out);
     enum
     {
         Rx, Tx

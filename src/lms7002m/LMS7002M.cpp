@@ -202,6 +202,34 @@ LMS7002M::LMS7002M() :
     mRegistersMap->InitializeDefaultValues(LMS7parameterList);
     mcuControl = new MCU_BD();
     mcuControl->Initialize(nullptr);
+
+    remoteCtr.spiOp = bind(&LMS7002M::spiOp, this, std::placeholders::_1, std::placeholders::_2);
+}
+
+#include "LMS64CProtocol.h"
+void LMS7002M::spiOp(Controller::Packet in, Controller::Packet *out)
+{
+    if(controlPort == nullptr)
+        return;
+
+    printf("External cmd: %i\n", in.cmd);
+    if(in.cmd == CMD_LMS7002_WR)
+    {
+        controlPort->WriteLMS7002MSPI((uint32_t*)&in.data[0], 1);
+    }
+    else if(in.cmd == CMD_LMS7002_RD)
+    {
+        controlPort->ReadLMS7002MSPI((uint32_t*)&in.data[0], (uint32_t*)&out->data[0], 1);
+    }
+    if(in.cmd == CMD_BRDSPI_WR)
+    {
+        controlPort->WriteRegister(((uint32_t*)in.data)[0], 1);
+    }
+    else if(in.cmd == CMD_BRDSPI_RD)
+    {
+        uint32_t readdata = 0;
+        controlPort->ReadRegister(((uint32_t*)in.data)[0], ((uint32_t*)out->data)[0]);
+    }
 }
 
 LMS7002M::~LMS7002M()

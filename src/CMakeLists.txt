@@ -49,6 +49,7 @@ set(LIME_SUITE_SOURCES
     ADF4002/ADF4002.cpp
     lms7002m_mcu/MCU_BD.cpp
     ConnectionRegistry/IConnection.cpp
+    ConnectionRegistry/host.cpp
     ConnectionRegistry/ConnectionHandle.cpp
     ConnectionRegistry/ConnectionRegistry.cpp
     lms7002m/LMS7002M_RegistersMap.cpp
@@ -145,6 +146,7 @@ include(ConnectionSTREAM_UNITE/CMakeLists.txt)
 include(ConnectionNovenaRF7/CMakeLists.txt)
 include(Connection_uLimeSDR/CMakeLists.txt)
 include(ConnectionXillybus/CMakeLists.txt)
+include(ConnectionRemote/CMakeLists.txt)
 
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/ConnectionRegistry/BuiltinConnections.in.cpp

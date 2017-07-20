@@ -1,4 +1,5 @@
 set(connection_registry_src_files
+    host.cpp
     ConnectionHandle.cpp
     ConnectionRegistry.cpp
     IConnection.cpp
