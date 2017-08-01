@@ -20,7 +20,7 @@ static ConnectionRemoteEntry EVB7COMEntry;
 }
 
 ConnectionRemoteEntry::ConnectionRemoteEntry(void):
-    ConnectionRegistryEntry("EVB7COM")
+    ConnectionRegistryEntry("Z_Remote") //Z just to appear last on the list
 {
     return;
 }
