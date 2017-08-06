@@ -127,7 +127,7 @@ It requires IConnection to be set by SetConnection() to communicate with chip
 */
 LMS7002M::LMS7002M() :
     useCache(0),
-    mValueCache(new CalibrationCache()),
+    mValueCache(nullptr),
     mRegistersMap(new LMS7002M_RegistersMap()),
     controlPort(nullptr),
     mdevIndex(0),
@@ -234,6 +234,8 @@ void LMS7002M::spiOp(Controller::Packet in, Controller::Packet *out)
 
 LMS7002M::~LMS7002M()
 {
+    if (mValueCache)
+        delete mValueCache;
     delete mcuControl;
     delete mRegistersMap;
 }
@@ -2577,6 +2579,13 @@ LMS7002M_SelfCalState::~LMS7002M_SelfCalState(void)
 
 void LMS7002M::EnableValuesCache(bool enabled)
 {
+    if (mValueCache && (!enabled))
+    {
+        delete mValueCache;
+        mValueCache = nullptr;
+    }
+    else if (mValueCache == nullptr && enabled)
+        mValueCache = new CalibrationCache();
     useCache = enabled;
 }
 
