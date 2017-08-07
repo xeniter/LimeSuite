@@ -277,7 +277,73 @@ int ConnectionRemote::ReadRegisters(const uint32_t *addrs, uint32_t *readData, s
 
 int ConnectionRemote::ProgramMCU(const uint8_t *buffer, const size_t length, const MCU_PROG_MODE mode, ProgrammingCallback callback)
 {
-    return -1;
+    #ifndef NDEBUG
+    auto timeStart = std::chrono::high_resolution_clock::now();
+#endif // NDEBUG
+    const auto timeout = std::chrono::milliseconds(1000);
+    uint16_t i;
+    const uint32_t controlAddr = 0x0002;
+    const uint32_t statusReg = 0x0003;
+    const uint32_t addrDTM = 0x0004; //data to MCU
+    const uint16_t EMTPY_WRITE_BUFF = 1 << 0;
+    const uint16_t PROGRAMMED = 1 << 6;
+    const uint8_t fifoLen = 32;
+
+    //reset MCU, set mode
+    SPI_write(controlAddr, 0);
+    SPI_write(controlAddr, 2 & 0x3); //SRAM
+
+    for(i=0; i<length; i+=fifoLen)
+    {
+        //wait till EMPTY_WRITE_BUFF = 1
+        bool fifoEmpty = false;
+        auto t1 = std::chrono::high_resolution_clock::now();
+        auto t2 = t1;
+        do{
+            fifoEmpty = SPI_read(statusReg) & EMTPY_WRITE_BUFF;
+            t2 = std::chrono::high_resolution_clock::now();
+        }while( !fifoEmpty && (t2-t1)<timeout);
+
+        if(!fifoEmpty)
+            return ReportError(ETIMEDOUT, "MCU FIFO full");
+
+        //write 32 bytes into FIFO
+        {
+            uint8_t j;
+            uint16_t addr[fifoLen];
+            uint16_t data[fifoLen];
+            for(j=0; j<fifoLen; ++j)
+            {
+                addr[j] = addrDTM;
+                data[j] = buffer[i+j];
+                SPI_write(addr[j], data[j]);
+            }
+        }
+#ifndef NDEBUG
+        printf("MCU programming : %4i/%4i\r", i+fifoLen, length);
+#endif
+    }
+
+    //wait until programmed flag
+    {
+        bool programmed = false;
+        auto t1 = std::chrono::high_resolution_clock::now();
+        auto t2 = t1;
+        do{
+            programmed = SPI_read(statusReg) & PROGRAMMED;
+            t2 = std::chrono::high_resolution_clock::now();
+        }while( !programmed && (t2-t1)<timeout);
+
+        if(!programmed)
+            return ReportError(ETIMEDOUT, "MCU not programmed");
+    }
+#ifndef NDEBUG
+    auto timeEnd = std::chrono::high_resolution_clock::now();
+    printf("\nMCU Programming finished, %li ms\n",
+            std::chrono::duration_cast<std::chrono::milliseconds>
+            (timeEnd-timeStart).count());
+#endif //NDEBUG
+    return 0;
 }
 
 int ConnectionRemote::UpdateExternalDataRate(const size_t channel, const double txRate_Hz, const double rxRate_Hz, const double txPhase, const double rxPhase)
@@ -439,4 +505,18 @@ int ConnectionRemote::UpdateExternalDataRate(const size_t channel, const double 
 int ConnectionRemote::WriteRegister(const uint32_t addr, const uint32_t data)
 {
     return this->WriteRegisters(&addr, &data, 1);
+}
+
+int ConnectionRemote::SPI_write(uint16_t addr, uint16_t value)
+{
+    const uint32_t dataWr = addr << 16 | value;
+    return WriteLMS7002MSPI(&dataWr, 1, 0);
+}
+
+uint16_t ConnectionRemote::SPI_read(uint16_t addr)
+{
+    const uint32_t dataWr = addr << 16;
+    uint32_t dataRd = 0;
+    return ReadLMS7002MSPI(&dataWr, &dataRd, 1, 0);
+    return dataRd & 0xFFFF;
 }

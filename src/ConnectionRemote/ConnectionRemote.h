@@ -71,6 +71,8 @@ protected:
     int UpdateExternalDataRate(const size_t channel, const double txRate_Hz, const double rxRate_Hz, const double txPhase, const double rxPhase);
 
 private:
+    int SPI_write(uint16_t addr, uint16_t value);
+    uint16_t SPI_read(uint16_t addr);
     int Open(const char *comName);
     void Close(void);
 
