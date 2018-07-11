@@ -1038,6 +1038,7 @@ int LMS7002M::SetReferenceClk_SX(bool tx, float_type freq_Hz)
 */
 float_type LMS7002M::GetReferenceClk_SX(bool tx)
 {
+    return 40e6;
     return _cachedRefClockRate;
 }
 
