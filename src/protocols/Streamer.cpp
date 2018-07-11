@@ -858,38 +858,41 @@ void Streamer::ReceivePacketsLoop()
         for (uint8_t pktIndex = 0; pktIndex < bytesReceived / sizeof(FPGA_DataPacket); ++pktIndex)
         {
             const FPGA_DataPacket* pkt = (FPGA_DataPacket*)&buffers[bi*bufferSize];
-            const uint8_t byte0 = pkt[pktIndex].reserved[0];
-            if ((byte0 & (1 << 3)) != 0 && !txLate) //report only once per batch
-            {
-                txLate = true;
-                if(resetFlagsDelay > 0)
-                    --resetFlagsDelay;
-                else
-                {
-                    lime::warning("L");
-                    resetTxFlags.notify_one();
-                    resetFlagsDelay = buffersCount;
-                    for(auto &value: mTxStreams)
-                        if (value.used && value.mActive)
-                            value.pktLost++;
-                }
-            }
-            uint8_t* pktStart = (uint8_t*)pkt[pktIndex].data;
-            if(pkt[pktIndex].counter - prevTs != samplesInPacket && pkt[pktIndex].counter != prevTs)
-            {
-                int packetLoss = ((pkt[pktIndex].counter - prevTs)/samplesInPacket)-1;
-                for(auto &value: mRxStreams)
-                    if (value.used && value.mActive)
-                        value.pktLost += packetLoss;
-            }
+//            const uint8_t byte0 = pkt[pktIndex].reserved[0];
+//            if ((byte0 & (1 << 3)) != 0 && !txLate) //report only once per batch
+//            {
+//                txLate = true;
+//                if(resetFlagsDelay > 0)
+//                    --resetFlagsDelay;
+//                else
+//                {
+////                    lime::warning("L");
+//                    resetTxFlags.notify_one();
+//                    resetFlagsDelay = buffersCount;
+//                    for(auto value: mTxStreams)
+//                        if (value && value->mActive)
+//                            value->pktLost++;
+//                }
+//            }
+//            uint8_t* pktStart = (uint8_t*)pkt[pktIndex].data;
+//            if(pkt[pktIndex].counter - prevTs != samplesInPacket && pkt[pktIndex].counter != prevTs)
+//            {
+//                int packetLoss = ((pkt[pktIndex].counter - prevTs)/samplesInPacket)-1;
+//                for(auto value: mRxStreams)
+//                    if (value && value->mActive)
+//                        value->pktLost += packetLoss;
+//            }
             prevTs = pkt[pktIndex].counter;
             rxLastTimestamp.store(prevTs);
             //parse samples
             std::vector<complex16_t*> dest(chCount);
             for(uint8_t c=0; c<chCount; ++c)
                 dest[c] = (chFrames[c].samples);
-            int samplesCount = FPGA::FPGAPacketPayload2Samples(pktStart, 4080, chCount==2, packed, dest.data());
 
+            // HACK ALERT: this call is pretty much memcpy from pkt to dest. changed to copy the whole pkt structure (as FPGA now only sends samples instead of packets)
+            // so even the counter and reserved fields contain samples
+//            int samplesCount = FPGA::FPGAPacketPayload2Samples(pktStart, 4080, chCount==2, packed, dest.data());
+            int samplesCount = FPGA::FPGAPacketPayload2Samples(&pkt[pktIndex].reserved[0], 4080+16, chCount==2, packed, dest.data());
             for(int ch=0; ch<maxChannelCount; ++ch)
             {
                 if (mRxStreams[ch].used==false || mRxStreams[ch].mActive==false)
