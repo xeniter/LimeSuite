@@ -555,10 +555,11 @@ int Streamer::UpdateThreads(bool stopAll)
         terminateRx.store(true);
         rxThread.join();
     }
-    dataPort->WriteRegister(0xFFFF, 1 << chipId);
+
     //configure FPGA on first start, or disable FPGA when not streaming
     if((needTx || needRx) && (!txThread.joinable()) && (!rxThread.joinable()))
     {
+        dataPort->WriteRegister(0xFFFF, 1 << chipId);
         if (mRxStreams[0].used && mRxStreams[1].used)
             AlignRxRF(true);
         //enable FPGA streaming
@@ -616,6 +617,7 @@ int Streamer::UpdateThreads(bool stopAll)
     else if(not needTx and not needRx)
     {
         //disable FPGA streaming
+        dataPort->WriteRegister(0xFFFF, 1 << chipId);
         fpga->StopStreaming();
     }
 
@@ -628,6 +630,7 @@ int Streamer::UpdateThreads(bool stopAll)
     }
     if(needTx && (!txThread.joinable()))
     {
+        dataPort->WriteRegister(0xFFFF, 1 << chipId);
         dataPort->WriteRegister(0xD, 0); //stop WFM
         terminateTx.store(false);
         auto TxLoopFunction = std::bind(&Streamer::TransmitPacketsLoop, this);
