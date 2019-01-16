@@ -1528,7 +1528,7 @@ int LMS7002M::SetFrequencySX(bool tx, float_type freq_Hz, SX_details* output)
         this_thread::sleep_for(chrono::microseconds(50)); // probably no need for this as the interface is already very slow..
         auto cmphl = (uint8_t)Get_SPI_Reg_bits(LMS7param(VCO_CMPHO).address, 13, 12, true);
         if(cmphl == 2) {
-            lime::info("Fast Tune success; vco=%d value=%d", tuning_cache_sel_vco[freq_Hz], tuning_cache_csw_value[freq_Hz]);
+//            lime::info("Fast Tune success; vco=%d value=%d", tuning_cache_sel_vco[freq_Hz], tuning_cache_csw_value[freq_Hz]);
             this->SetActiveChannel(ch); //restore used channel
             if (output)
             {
