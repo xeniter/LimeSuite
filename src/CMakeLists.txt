@@ -142,9 +142,10 @@ endif()
 include(ConnectionEVB7COM/CMakeLists.txt)
 include(ConnectionFX3/CMakeLists.txt)
 include(ConnectionSTREAM_UNITE/CMakeLists.txt)
-#include(ConnectionNovenaRF7/CMakeLists.txt)
+#include(ConnectionNovenaRF7/CMakeLists.txt)	#No longer supported
 include(ConnectionFTDI/CMakeLists.txt)
 include(ConnectionXillybus/CMakeLists.txt)
+include(ConnectionRemote/CMakeLists.txt)
 
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/ConnectionRegistry/BuiltinConnections.in.cpp
@@ -223,9 +224,12 @@ set(LMS7SUITE_GUI_SOURCES
     boards_wxgui/pnluLimeSDR.cpp
     boards_wxgui/pnlUltimateEVB.cpp
     boards_wxgui/pnlBuffers.cpp
+    boards_wxgui/pnlCoreSDR.cpp
+    boards_wxgui/pnlLimeNetMicro.cpp
     ${PROJECT_SOURCE_DIR}/external/kissFFT/kiss_fft.c
     windowFunction.cpp
     boards_wxgui/pnlLimeSDR.cpp
+    boards_wxgui/pnlGPIO.cpp
 )
 
 include(FeatureSummary)
@@ -289,11 +293,6 @@ endif()
 # utilities
 #########################################################################
 add_subdirectory(utilities)
-
-#########################################################################
-# tests
-#########################################################################
-add_subdirectory(tests)
 
 #########################################################################
 # examples

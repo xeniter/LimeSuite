@@ -102,7 +102,6 @@ if(CMAKE_COMPILER_IS_GNUCXX)
     SET_PROPERTY(CACHE ENABLE_SIMD_FLAGS PROPERTY STRINGS none native SSE3 SSE4.2 AVX AVX2) 
 
     if(${ENABLE_SIMD_FLAGS} MATCHES "native")
-        add_definitions(-march=native)
         if(X86)
             add_definitions(-mfpmath=both)
         endif()
@@ -203,7 +202,7 @@ endif()
 find_package(Doxygen QUIET)
 include(FeatureSummary)
 include(CMakeDependentOption)
-cmake_dependent_option(ENABLE_API_DOXYGEN "Enable LMS API Doxygen documentation" ON "DOXYGEN_FOUND" OFF)
+cmake_dependent_option(ENABLE_API_DOXYGEN "Enable LMS API Doxygen documentation" OFF "DOXYGEN_FOUND" OFF)
 add_feature_info(LimeSuiteDocAPI ENABLE_API_DOXYGEN "LMS API Doxygen documentation")
 if (ENABLE_API_DOXYGEN)
   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/docs/doxygen/DoxyfileAPI.in ${CMAKE_CURRENT_BINARY_DIR}/doc/Doxyfile @ONLY)
@@ -242,6 +241,11 @@ endif (ENABLE_HEADERS AND ENABLE_LIBRARY)
 ## freedesktop environment integration
 ########################################################################
 add_subdirectory(Desktop)
+
+########################################################################
+## Octave plugin integration
+########################################################################
+add_subdirectory(octave)
 
 #########################################################################
 # summary

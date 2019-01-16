@@ -307,7 +307,8 @@ enum
     LMS_PATH_LNAL = 2, ///<RX LNA_L port
     LMS_PATH_LNAW = 3, ///<RX LNA_W port
     LMS_PATH_TX1 = 1,  ///<TX port 1
-    LMS_PATH_TX2 = 2   ///<TX port 2
+    LMS_PATH_TX2 = 2,   ///<TX port 2
+    LMS_PATH_AUTO = 255, ///<Automatically select port (if supported)
 };
 
 /**
@@ -764,15 +765,31 @@ API_EXPORT int CALL_CONV LMS_GetGFIRCoeff(lms_device_t * device, bool dir_tx,
 API_EXPORT int CALL_CONV LMS_SetGFIR(lms_device_t * device, bool dir_tx,
                                     size_t chan, lms_gfir_t filt, bool enabled);
 
+
+
 /**
- *  Enables or disable caching of calibration values.
- *
+ * Enables or disable caching of calibration values.
+ * 
+ * @deprecated calibration cache has been removed from LimeSuite. Use
+ * LMS_EnableCache() to enable caching of register values
+ * 
  * @param   dev         Device handle previously obtained by LMS_Open().
  * @param   enable      true to enable cache
  *
  * @return 0 on success, (-1) on failure
  */
 API_EXPORT int CALL_CONV LMS_EnableCalibCache(lms_device_t *dev, bool enable);
+
+/**
+ * Enables or disable caching of LMS7 and FPGA register values.
+ * 
+ * @param   dev         Device handle previously obtained by LMS_Open().
+ * @param   enable      true to enable cache
+ *
+ * @return 0 on success, (-1) on failure
+ */
+
+API_EXPORT int CALL_CONV LMS_EnableCache(lms_device_t *dev, bool enable);
 
 /** @} (End FN_ADVANCED) */
 
@@ -958,21 +975,23 @@ API_EXPORT int CALL_CONV LMS_SetClockFreq(lms_device_t *dev, size_t clk_id,
  * @note calling this functions switches clock source to VCTCXO
  *
  * @param   dev         Device handle previously obtained by LMS_Open().
- * @param   val         Value to write to VCTCXO trim DAC, range 0-255
+ * @param   val         Value to write to VCTCXO trim DAC
+ * @param   memoty      if true also saves value to non-volatile storage   
  *
  * @return 0 on success, (-1) on failure
  */
-API_EXPORT int CALL_CONV LMS_VCTCXOWrite(lms_device_t * dev, uint16_t val);
+API_EXPORT int CALL_CONV LMS_VCTCXOWrite(lms_device_t * dev, uint16_t val, bool memoty);
 
 /**
  * Read value from VCTCXO trim DAC.
  *
  * @param[in]   dev     Device handle previously obtained by LMS_Open().
  * @param[out]  val     Value to read from VCTCXO trim DAC
+ * @param[in]   memory  if true obtains VCTCXO value from non-volatile storage
  *
  * @return 0 on success, (-1) on failure
  */
-API_EXPORT int CALL_CONV LMS_VCTCXORead(lms_device_t * dev, uint16_t *val);
+API_EXPORT int CALL_CONV LMS_VCTCXORead(lms_device_t * dev, uint16_t *val, bool memory);
 
 /**
  * Synchronizes register values between API cache and chip
