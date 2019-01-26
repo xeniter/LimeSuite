@@ -18,6 +18,7 @@ LMS7_LimeSDR_mini::LMS7_LimeSDR_mini(lime::IConnection* conn, lime::LMS7_Device 
     auto_rx_path(true),
     auto_tx_path(true)
 {
+    lime::warning("This version of LimeSuite only works for the 'spectrogram' application!");
     fpga = new lime::FPGA_Mini();
     while (obj && lms_list.size() > 1)
     {

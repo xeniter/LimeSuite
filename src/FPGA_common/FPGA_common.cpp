@@ -230,7 +230,6 @@ int FPGA::SetPllClock(int clockIndex, int nSteps, bool waitLock, uint16_t &reg23
 */
 int FPGA::SetPllFrequency(const uint8_t pllIndex, const double inputFreq, FPGA_PLL_clock* clocks, const uint8_t clockCount)
 {
-    lime::warning("Call to SetPllFrequency, which does not exist in this HACKED version!");
     return 0;
     auto t1 = chrono::high_resolution_clock::now();
     auto t2 = t1;
