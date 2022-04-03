@@ -5,6 +5,7 @@
  * Created on September 18, 2016
  */
 #include "LimeSDR.h"
+#include "Logger.h"
 #include "device_constants.h"
 #include "FPGA_common.h"
 
