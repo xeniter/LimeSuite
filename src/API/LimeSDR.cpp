@@ -13,6 +13,7 @@ namespace lime
 
 LMS7_LimeSDR::LMS7_LimeSDR(lime::IConnection* conn, LMS7_Device *obj) : LMS7_Generic(conn, obj)
 {
+    lime::warning("This version of LimeSuite only works for the 'spectrogram' application!");
 }
 
 std::vector<std::string> LMS7_LimeSDR::GetProgramModes() const
@@ -25,6 +26,12 @@ std::vector<std::string> LMS7_LimeSDR::GetProgramModes() const
 
 int LMS7_LimeSDR::SetRate(double f_Hz, int oversample)
 {
+    if (oversample == 0) {
+        int n = lime::cgenMax / (4 * f_Hz);
+        oversample = (n >= 32) ? 32 : (n >= 16) ? 16 : (n >= 8) ? 8 : (n >= 4) ? 4 : 2;
+        lime::info("Setting oversampling of %i", oversample);
+    }
+    
     bool bypass = (oversample == 1) || (oversample == 0 && f_Hz > 62e6);
 
     for (unsigned i = 0; i < GetNumChannels(false);i++)
