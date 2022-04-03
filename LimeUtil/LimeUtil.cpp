@@ -17,6 +17,9 @@
 #include "LMS64CProtocol.h"
 #include "lms7_device.h"
 #include "device_constants.h"
+#include "ADF4002.h"
+#include <vector>
+#include <stdint.h>
 
 using namespace lime;
 
@@ -41,7 +44,7 @@ static int printHelp(void)
     std::cout << "    --info \t\t\t\t Print module information" << std::endl;
     std::cout << "    --find[=\"module=foo,serial=bar\"] \t Discover available devices" << std::endl;
     std::cout << "    --make[=\"module=foo,serial=bar\"] \t Create a device instance" << std::endl;
-    std::cout << "    --force \t\t\t\t Force operaton" << std::endl;
+    std::cout << "    --force \t\t\t\t Force operation" << std::endl;
     std::cout << std::endl;
     std::cout << "  Advanced options:" << std::endl;
     std::cout << "    --args[=\"module=foo,serial=bar\"] \t Arguments for the options below" << std::endl;
@@ -49,6 +52,7 @@ static int printHelp(void)
     std::cout << "    --fpga=\"filename\" \t\t\t Program FPGA gateware to flash" << std::endl;
     std::cout << "    --fw=\"filename\"   \t\t\t Program FX3  firmware to flash" << std::endl;
     std::cout << "    --timing          \t\t\t Time interfaces and operations" << std::endl;
+    std::cout << "    --FX3reset[=\"module=foo,serial=bar\"] \t\t\t FX3 USB controller reset" << std::endl;
     std::cout << std::endl;
     std::cout << "  Calibrations sweep:" << std::endl;
     std::cout << "    --cal[=\"module=foo,serial=bar\"]  \t Calibrate device, optional device args..." << std::endl;
@@ -58,6 +62,11 @@ static int printHelp(void)
     std::cout << "    --bw[=bandwidth, default=30MHz]    \t Desired calibration bandwidth(Hz)" << std::endl;
     std::cout << "    --dir[=direction, default=BOTH]    \t Calibration direction, RX, TX, BOTH" << std::endl;
     std::cout << "    --chans[=channels, default=ALL]    \t Calibration channels, 0, 1, ALL" << std::endl;
+    std::cout << std::endl;
+    std::cout << "  External reference clock:" << std::endl;
+    std::cout << "    --refclk[=\"module=foo,serial=bar\"] \t Enable external reference clock" << std::endl;
+    std::cout << "    --fref[=freq]                \t Reference frequency (Hz)" << std::endl;
+    std::cout << "    --fvco[=freq]                \t VCO frequency (Hz)" << std::endl;
     std::cout << std::endl;
     return EXIT_SUCCESS;
 }
@@ -100,7 +109,7 @@ static int printInfo(void)
 static int findDevices(void)
 {
     std::string argStr;
-    if (optarg != NULL) argStr = optarg;
+    if (optarg != NULL) argStr = "none," + std::string(optarg);
     ConnectionHandle hint(argStr);
 
     auto handles = ConnectionRegistry::findConnections(hint);
@@ -118,11 +127,11 @@ static int findDevices(void)
  **********************************************************************/
 static int makeDevice(void)
 {
-    std::string argStr;
-    if (optarg != NULL) argStr = optarg;
+    std::string argStr = "none,";
+    if (optarg != NULL) argStr += optarg;
     ConnectionHandle handle(argStr);
 
-    std::cout << "Make device " << argStr << std::endl;
+    std::cout << "Make device " << argStr.substr(5) << std::endl;
     auto conn = ConnectionRegistry::makeConnection(handle);
     if (conn == nullptr)
     {
@@ -155,6 +164,105 @@ static int makeDevice(void)
 }
 
 /***********************************************************************
+ * Enable external reference clock 
+ **********************************************************************/
+#define ADF4002_SPI_INDEX 0x30
+#define PERIPH_INPUT_RD_0 0xc8
+static int enableExtRefClk(const std::string &argStr, const double fref, const double fvco)
+{
+    lime::ADF4002* m_pModule;
+    m_pModule = new lime::ADF4002();
+
+    ConnectionHandle handle(argStr);
+
+    std::cout << "Enable external reference clock on device " << std::endl;
+    auto conn = ConnectionRegistry::makeConnection(handle);
+    if (conn == nullptr)
+    {
+        std::cout << "No available device!" << std::endl;
+        return EXIT_FAILURE;
+    }
+    if (not conn->IsOpen())
+    {
+        std::cout << "Connection not open!" << std::endl;
+        ConnectionRegistry::freeConnection(conn);
+        return EXIT_FAILURE;
+    }
+
+    std::cout << "  Setting fRef: " << fref/1e6 << "MHz, fVco: " << fvco/1e6 << "MHz..." << std::endl;
+    int rCount = 125;
+    int nCount = 384;
+    unsigned char data[12];
+
+    m_pModule->SetDefaults();
+    m_pModule->SetFrefFvco(fref, fvco, rCount, nCount);
+    m_pModule->GetConfig(data);
+
+    std::vector<uint32_t> dataWr;
+    for(int i=0; i<12; i+=3)
+        dataWr.push_back((uint32_t)data[i] << 16 | (uint32_t)data[i+1] << 8 | data[i+2]);
+
+    int status;
+    // ADF4002 needs to be writen 4 values of 24 bits
+    status = conn->TransactSPI(ADF4002_SPI_INDEX, dataWr.data(), nullptr, 4);
+    if (status != 0)
+    {
+        std::cout << "Transaction failed!" << std::endl;
+        ConnectionRegistry::freeConnection(conn);
+        return EXIT_FAILURE;
+    }
+
+    uint16_t adfLocked = 0;
+    status = conn->ReadRegister(PERIPH_INPUT_RD_0, adfLocked); 
+    if (status != 0)
+    {
+        std::cout << "ReadRegister failed!" << std::endl;
+        ConnectionRegistry::freeConnection(conn);
+        return EXIT_FAILURE;
+    }
+    // Bit 2 is the lock state
+    adfLocked = (adfLocked & 0x02) >> 1;
+    std::cout << "  ADF4002 Lock State: " << adfLocked << std::endl;
+
+    std::cout << "  Free connection... " << std::flush;
+    ConnectionRegistry::freeConnection(conn);
+    std::cout << "OK" << std::endl;
+    std::cout << std::endl;
+    return EXIT_SUCCESS;
+}
+
+/***********************************************************************
+ * FX3 reset
+ **********************************************************************/
+static int FX3Reset()
+{
+    std::string argStr = "none,";
+    if (optarg != NULL) argStr += optarg;
+    auto handles = ConnectionRegistry::findConnections(argStr);
+    if(handles.size() == 0)
+    {
+        std::cout << "No devices found" << std::endl;
+        return EXIT_FAILURE;
+    }
+    std::cout << "Connected to [" << handles[0].ToString() << "]" << std::endl;
+    auto conn = ConnectionRegistry::makeConnection(handles[0]);
+    auto status = conn->ProgramWrite(nullptr, 0, 0, 1, nullptr);
+
+    std::cout << std::endl;
+    if(status == 0)
+    {
+        std::cout << "FX3 reset complete!" << std::endl;
+    }
+    else
+    {
+        std::cout << "FX3 reset failed!" << std::endl;
+    }
+
+    ConnectionRegistry::freeConnection(conn);
+    return (status==0)?EXIT_SUCCESS:EXIT_FAILURE;
+}
+
+/***********************************************************************
  * Program update (sync images and flash support)
  **********************************************************************/
 static int programUpdate(const bool force, const std::string &argStr)
@@ -184,7 +292,7 @@ static int programUpdate(const bool force, const std::string &argStr)
     }
     else
     {
-        std::cout << "Programming update failed! : " << GetLastErrorMessage() << std::endl;
+        std::cout << "Programming update failed!" << std::endl;
     }
 
     ConnectionRegistry::freeConnection(conn);
@@ -231,7 +339,7 @@ static int programGateware(const std::string &argStr)
     auto status = device->Program(program_mode::fpgaFlash, progData.data(), progData.size(), progCallback);
     std::cout << std::endl;
     if(status != 0)
-        std::cout << "Programming failed! : " << GetLastErrorMessage() << std::endl;
+        std::cout << "Programming failed!" << std::endl;
     delete device;
     return (status==0)?EXIT_SUCCESS:EXIT_FAILURE;
 }
@@ -276,7 +384,7 @@ static int programFirmware(const std::string &argStr)
     auto status = device->Program(program_mode::fx3Flash, progData.data(), progData.size(), progCallback);
     std::cout << std::endl;
     if(status != 0)
-        std::cout << "Programming failed! : " << GetLastErrorMessage() << std::endl;
+        std::cout << "Programming failed!" << std::endl;
     delete device;
     return (status==0)?EXIT_SUCCESS:EXIT_FAILURE;
 }
@@ -297,6 +405,7 @@ int main(int argc, char *argv[])
         {"fpga", required_argument, 0, 'g'},
         {"fw",   required_argument, 0, 'w'},
         {"timing",     no_argument, 0, 't'},
+        {"FX3reset", optional_argument, 0, 'r'},
         {"cal",     optional_argument, 0, 'l'},
         {"start",   required_argument, 0, 's'},
         {"stop",    required_argument, 0, 'p'},
@@ -304,12 +413,15 @@ int main(int argc, char *argv[])
         {"bw",      required_argument, 0, 'b'},
         {"dir",     required_argument, 0, 'd'},
         {"chans",   required_argument, 0, 'c'},
+        {"refclk", optional_argument, 0, 'E'},
+        {"fref",    optional_argument, 0, 'R'},
+        {"fvco",    optional_argument, 0, 'V'},
         {0, 0, 0,  0}
     };
 
     std::string argStr, dir("BOTH"), chans("ALL");
-    double start(0.0), stop(0.0), step(1e6), bw(30e6);
-    bool testTiming(false), calSweep(false), update(false), force(false);
+    double start(0.0), stop(0.0), step(1e6), bw(30e6), fref(10.0e6), fvco(30.720e6);
+    bool testTiming(false), calSweep(false), extRef(false), update(false), force(false);
     int long_index = 0;
     int option = 0;
     while ((option = getopt_long_only(argc, argv, "", long_options, &long_index)) != -1)
@@ -321,15 +433,16 @@ int main(int argc, char *argv[])
         case 'f': return findDevices();
         case 'm': return makeDevice();
         case 'a':
-            if (optarg != NULL) argStr = optarg;
+            if (optarg != NULL) argStr = "none," + std::string(optarg);
             break;
         case 'u': update = true; break;
         case 'g': return programGateware(argStr);
         case 'w': return programFirmware(argStr);
         case 't': testTiming = true; break;
+        case 'r': return FX3Reset();
         case 'l':
             calSweep = true;
-            if (optarg != NULL) argStr = optarg;
+            if (optarg != NULL) argStr = "none," + std::string(optarg);
             break;
         case 's': if (optarg != NULL) start = std::stod(optarg); break;
         case 'p': if (optarg != NULL) stop = std::stod(optarg); break;
@@ -338,11 +451,18 @@ int main(int argc, char *argv[])
         case 'd': if (optarg != NULL) dir = optarg; break;
         case 'c': if (optarg != NULL) chans = optarg; break;
         case 'F': force = true; break;
+        case 'E':
+            extRef = true;
+            if (optarg != NULL) argStr = "none," + std::string(optarg);
+            break;
+        case 'R': if (optarg != NULL) fref = std::stod(optarg); break;
+        case 'V': if (optarg != NULL) fvco = std::stod(optarg); break;
         }
     }
 
     if (testTiming) return deviceTestTiming(argStr);
     if (calSweep) return deviceCalSweep(argStr, start, stop, step, bw, dir, chans);
+    if (extRef) return enableExtRefClk(argStr, fref, fvco);
     if (update) return programUpdate(force, argStr);
 
     //unknown or unspecified options, do help...

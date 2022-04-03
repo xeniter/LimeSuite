@@ -1,11 +1,16 @@
 cmake_dependent_option(ENABLE_QUICKTEST "LimeSDR quick test utility" ON "ENABLE_LIBRARY" OFF)
 add_feature_info(LimeQuickTest ENABLE_QUICKTEST "LimeSDR-QuickTest Utility")
 
+if(POLICY CMP0072)
+    cmake_policy(SET CMP0072 NEW)
+endif()
+
 if(ENABLE_QUICKTEST)
     add_executable(LimeQuickTest
 		   LimeSDRTest.cpp
 		   LimeSDRTest_Mini.cpp
 		   LimeSDRTest_USB.cpp
+		   LimeNET_Micro_Test.cpp
         	   TestGUI.cpp
 		   resources/resource.rc
 		   ${PROJECT_SOURCE_DIR}/external/kissFFT/kiss_fft.c)

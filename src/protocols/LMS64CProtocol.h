@@ -24,27 +24,27 @@ class LIME_API LMS64CProtocol : public virtual IConnection
 public:
     LMS64CProtocol(void);
 
-    virtual ~LMS64CProtocol(void);
+    ~LMS64CProtocol(void) override;
 
-    virtual DeviceInfo GetDeviceInfo(void);
+    DeviceInfo GetDeviceInfo(void) override;
 
     //! DeviceReset implemented by LMS64C
     int DeviceReset(int ind=0);
 
     //! TransactSPI implemented by LMS64C
-    int TransactSPI(const int addr, const uint32_t *writeData, uint32_t *readData, const size_t size)override;
+    int TransactSPI(const int addr, const uint32_t *writeData, uint32_t *readData, const size_t size) override;
 
     //! WriteI2C implemented by LMS64C
-    int WriteI2C(const int addr, const std::string &data);
+    int WriteI2C(const int addr, const std::string &data) override;
 
     //! ReadI2C implemented by LMS64C
-    int ReadI2C(const int addr, const size_t numBytes, std::string &data);
+    int ReadI2C(const int addr, const size_t numBytes, std::string &data) override;
 
     //! WriteRegisters (BRDSPI) implemented by LMS64C
-    int WriteRegisters(const uint32_t *addrs, const uint32_t *data, const size_t size);
+    int WriteRegisters(const uint32_t *addrs, const uint32_t *data, const size_t size) override;
 
     //! ReadRegisters (BRDSPI) implemented by LMS64C
-    int ReadRegisters(const uint32_t *addrs, uint32_t *data, const size_t size);
+    int ReadRegisters(const uint32_t *addrs, uint32_t *data, const size_t size) override;
 
     /// Supported connection types.
     enum eConnectionType
@@ -56,14 +56,6 @@ public:
         PCIE_PORT = 3,
         //insert new types here
         CONNECTION_TYPES_COUNT //used only for memory allocation
-    };
-
-    enum eLMS_PROTOCOL
-    {
-        LMS_PROTOCOL_UNDEFINED = 0,
-        LMS_PROTOCOL_DIGIC,
-        LMS_PROTOCOL_LMS64C,
-        LMS_PROTOCOL_NOVENA,
     };
 
     struct GenericPacket
@@ -82,18 +74,6 @@ public:
         std::vector<unsigned char> inBuffer;
     };
 
-    struct ProtocolDIGIC
-    {
-        static const int pktLength = 64;
-        static const int maxDataLength = 60;
-        ProtocolDIGIC() : cmd(0), i2cAddr(0), blockCount(0) {};
-        unsigned char cmd;
-        unsigned char i2cAddr;
-        unsigned char blockCount;
-        unsigned char reserved;
-        unsigned char data[maxDataLength];
-    };
-
     struct ProtocolLMS64C
     {
         static const int pktLength = 64;
@@ -107,17 +87,6 @@ public:
         unsigned char blockCount;
         unsigned char periphID;
         unsigned char reserved[4];
-        unsigned char data[maxDataLength];
-    };
-
-    struct ProtocolNovena
-    {
-        static const int pktLength = 128;
-        static const int maxDataLength = 128;
-        ProtocolNovena() :cmd(0),status(0) {};
-        unsigned char cmd;
-        unsigned char status;
-        unsigned char blockCount;
         unsigned char data[maxDataLength];
     };
 
@@ -172,15 +141,15 @@ public:
         PROGRAM_WRITE_TARGET_COUNT
     };
 
-    virtual int ProgramWrite(const char *buffer, const size_t length, const int programmingMode, const int device, ProgrammingCallback callback = nullptr);
+    int ProgramWrite(const char *buffer, const size_t length, const int programmingMode, const int device, ProgrammingCallback callback = nullptr) override;
 
-    virtual int CustomParameterRead(const uint8_t *ids, double *values, const size_t count, std::string* units) override;
-    virtual int CustomParameterWrite(const uint8_t *ids, const double *values, const size_t count, const std::string& units) override;
+    int CustomParameterRead(const uint8_t *ids, double *values, const size_t count, std::string* units) override;
+    int CustomParameterWrite(const uint8_t *ids, const double *values, const size_t count, const std::string& units) override;
 
-    virtual int GPIOWrite(const uint8_t *buffer, const size_t bufLength) override;
-    virtual int GPIORead(uint8_t *buffer, const size_t bufLength) override;
-    virtual int GPIODirWrite(const uint8_t *buffer, const size_t bufLength) override;
-    virtual int GPIODirRead(uint8_t *buffer, const size_t bufLength) override;
+    int GPIOWrite(const uint8_t *buffer, const size_t bufLength) override;
+    int GPIORead(uint8_t *buffer, const size_t bufLength) override;
+    int GPIODirWrite(const uint8_t *buffer, const size_t bufLength) override;
+    int GPIODirRead(uint8_t *buffer, const size_t bufLength) override;
 
     int ProgramMCU(const uint8_t *buffer, const size_t length, const MCU_PROG_MODE mode, ProgrammingCallback callback) override;
     int WriteLMS7002MSPI(const uint32_t *writeData, size_t size,unsigned periphID = 0) override;
@@ -201,8 +170,8 @@ private:
     int WriteADF4002SPI(const uint32_t *writeData, const size_t size);
     int ReadADF4002SPI(const uint32_t *writeData, uint32_t *readData, const size_t size);
 
-    unsigned char* PreparePacket(const GenericPacket &pkt, int &length, const eLMS_PROTOCOL protocol);
-    int ParsePacket(GenericPacket &pkt, const unsigned char* buffer, const int length, const eLMS_PROTOCOL protocol);
+    unsigned char* PreparePacket(const GenericPacket &pkt, int &length);
+    int ParsePacket(GenericPacket &pkt, const unsigned char* buffer, const int length);
     std::mutex mControlPortLock;
     double _cachedRefClockRate;
 };

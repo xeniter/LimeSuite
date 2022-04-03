@@ -2,6 +2,7 @@
 #include "Logger.h"
 #include "LMS64CProtocol.h"
 #include "LimeSDRTest.h"
+#include "VersionInfo.h"
 #include <thread>
 #include "kiss_fft.h"
 #include "FPGA_Mini.h"
@@ -67,23 +68,38 @@ LimeSDRTest* LimeSDRTest::Connect()
         return nullptr;
     }
 
-    std::string str = "->Device: ";
-    str += handles[0].serialize();
-    UpdateStatus(LMS_TEST_INFO, str.c_str());
-    if (str.find("USB 3") == std::string::npos)
+    auto info = dev->GetInfo();
+    if (strstr(info->deviceName, lime::GetDeviceName(lime::LMS_DEV_LIMESDR))
+        || strstr(info->deviceName, lime::GetDeviceName(lime::LMS_DEV_LIMESDRMINI)))
     {
-        str = "Warning: USB3 not available";
+        std::string str = "->Device: ";
+        str += handles[0].serialize();
+        str += ", HW=" + std::string(info->hardwareVersion);
+        str += ", GW=" + std::string(info->gatewareVersion);
+
+        UpdateStatus(LMS_TEST_INFO, str.c_str());
+        if (str.find("USB 3") == std::string::npos)
+        {
+            str = "Warning: USB3 not available";
+            UpdateStatus(LMS_TEST_INFO, str.c_str());
+        }
+        UpdateStatus(LMS_TEST_LOGFILE, handles[0].serial.c_str());
+        
+        str = " Chip temperature: " + std::to_string(int(dev->GetChipTemperature())) + " C";
         UpdateStatus(LMS_TEST_INFO, str.c_str());
     }
-    UpdateStatus(LMS_TEST_LOGFILE, handles[0].serial.c_str());
 
-    auto info = dev->GetInfo();
     if (strstr(info->deviceName, lime::GetDeviceName(lime::LMS_DEV_LIMESDR)))
         return new LimeSDRTest_USB(dev);
     else if (strstr(info->deviceName, lime::GetDeviceName(lime::LMS_DEV_LIMESDRMINI)))
         return new LimeSDRTest_Mini(dev);
+    else if (handles[0].media.find("USB")!=std::string::npos && strstr(info->deviceName, lime::GetDeviceName(lime::LMS_DEV_LIMENET_MICRO)))
+        return new LimeNET_Micro_Test(dev);
     else
+    {
+        UpdateStatus(LMS_TEST_FAIL, "Board not supported");
         return nullptr;
+    }
 
 }
 
@@ -468,6 +484,7 @@ int LimeSDRTest::RunTests(TestCallback cb, bool nonblock)
     std::string str = "[ TESTING STARTED ]\n->Start time: ";
     std::time_t time = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     str += std::ctime(&time);
+    str += "->LimeSuite version: " + lime::GetLibraryVersion() + "\n";
     UpdateStatus(LMS_TEST_INFO, str.c_str());
 
     auto testObj = Connect();

@@ -1,5 +1,5 @@
 ///////////////////////////////////////////////////////////////////////////
-// C++ code generated with wxFormBuilder (version Feb 16 2016)
+// C++ code generated with wxFormBuilder (version Jun 17 2015)
 // http://www.wxformbuilder.org/
 //
 // PLEASE DO "NOT" EDIT THIS FILE!
@@ -45,6 +45,7 @@ class AppFrame_view : public wxFrame
 		enum
 		{
 			idMenuQuit = 1000,
+			ID_MENUITEM_LIMERFE,
 			idMenuAbout
 		};
 		
@@ -71,8 +72,10 @@ class AppFrame_view : public wxFrame
 		virtual void OnShowPrograming( wxCommandEvent& event ) { event.Skip(); }
 		virtual void OnShowFPGAcontrols( wxCommandEvent& event ) { event.Skip(); }
 		virtual void OnShowDeviceInfo( wxCommandEvent& event ) { event.Skip(); }
+		virtual void OnShowAPICalls( wxCommandEvent& event ) { event.Skip(); }
 		virtual void OnShowSPI( wxCommandEvent& event ) { event.Skip(); }
 		virtual void OnShowBoardControls( wxCommandEvent& event ) { event.Skip(); }
+		virtual void OnShowLimeRFE( wxCommandEvent& event ) { event.Skip(); }
 		virtual void OnAbout( wxCommandEvent& event ) { event.Skip(); }
 		
 	

@@ -2,15 +2,23 @@
 ## Create lime-suite project
 ########################################################################
 cmake_minimum_required(VERSION 3.1.3)
-set(CMAKE_CONFIGURATION_TYPES "Debug;Release;RelWithDebInfo" CACHE TYPE INTERNAL FORCE)
+set(CMAKE_CONFIGURATION_TYPES "Debug;Release;RelWithDebInfo" CACHE STRING INTERNAL FORCE)
 project("LimeSuite")
 
 option(BUILD_SHARED_LIBS "Build the shared library" ON)
+option(ENABLE_NEW_GAIN_BEHAVIOUR "Enable new gain functionality" OFF)
 
 #include modules for finding CyAPI
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules/")
 
-cmake_policy(SET CMP0015 OLD)
+if(POLICY CMP0015)
+    cmake_policy(SET CMP0015 NEW)
+endif()
+
+if(POLICY CMP0077)
+    cmake_policy(SET CMP0077 OLD)
+endif()
+
 if(${CMAKE_MAJOR_VERSION} GREATER 2)
     cmake_policy(SET CMP0043 NEW)
 endif()
@@ -75,6 +83,13 @@ else()
     set(X86 FALSE)
 endif()
 
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "riscv64")
+        set(RV64 TRUE)
+else()
+        set(RV64 FALSE)
+endif()
+
+
 if(CMAKE_COMPILER_IS_GNUCXX)
 
     #enable C++11 on older versions of cmake
@@ -91,17 +106,32 @@ if(CMAKE_COMPILER_IS_GNUCXX)
     add_compile_options(-fvisibility=hidden)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility-inlines-hidden")
 
+    #disable gcc caller-saves flag for O2-O3 optimizations
+    #workaround fix for gcc 9.3+
+    if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+        if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 9.3 OR 
+            CMAKE_CXX_COMPILER_VERSION VERSION_EQUAL 9.9)
+            add_compile_options(-fno-caller-saves)
+        endif()
+    endif()
+
     #default SIMD configuration uses native build flags
     #when packaging and x86, use sse3 so the binaries work across multiple x86 variants
-    set(DEFAULT_SIMD_FLAGS "native")
+    if(NOT DEFAULT_SIMD_FLAGS)
+        set(DEFAULT_SIMD_FLAGS "native")
+    endif()
     if ("${CMAKE_INSTALL_PREFIX}" STREQUAL "/usr" AND X86)
         set(DEFAULT_SIMD_FLAGS "SSE3")
+    endif()
+    if(RV64)
+        set(DEFAULT_SIMD_FLAGS "rv64")
     endif()
 
     SET(ENABLE_SIMD_FLAGS "${DEFAULT_SIMD_FLAGS}" CACHE STRING "Set compiler SIMD flags")
     SET_PROPERTY(CACHE ENABLE_SIMD_FLAGS PROPERTY STRINGS none native SSE3 SSE4.2 AVX AVX2) 
 
     if(${ENABLE_SIMD_FLAGS} MATCHES "native")
+        add_definitions(-march=native)
         if(X86)
             add_definitions(-mfpmath=both)
         endif()
@@ -146,6 +176,10 @@ endif(MSVC)
 if (APPLE)
    add_definitions(-D__unix__=1) #we use this for unix detection, but clang does not define it
 endif(APPLE)
+
+if (ENABLE_NEW_GAIN_BEHAVIOUR)
+    add_definitions(-DNEW_GAIN_BEHAVIOUR)
+endif()
 
 ########################################################################
 # rpath setup - http://www.cmake.org/Wiki/CMake_RPATH_handling

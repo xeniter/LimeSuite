@@ -444,7 +444,11 @@ int ConnectionFT601::BeginDataReading(char *buffer, uint32_t length, int ep)
     FT_STATUS ftStatus = FT_OK;
     ftStatus = FT_ReadPipe(mFTHandle, streamRdEp, (unsigned char*)buffer, length, &ulActual, &contexts[i].inOvLap);
     if (ftStatus != FT_IO_PENDING)
+    {
+        lime::error("ERROR BEGIN DATA READING %d", ftStatus);
+        contexts[i].used = false;
         return -1;
+    }
 #else
     libusb_transfer *tr = contexts[i].transfer;
     libusb_fill_bulk_transfer(tr, dev_handle, streamRdEp, (unsigned char*)buffer, length, callback_libusbtransfer, &contexts[i], 0);
@@ -465,7 +469,7 @@ int ConnectionFT601::BeginDataReading(char *buffer, uint32_t length, int ep)
 @brief Waits for asynchronous data reception
 @param contextHandle handle of which context data to wait
 @param timeout_ms number of miliseconds to wait
-@return 1-data received, 0-data not received
+@return true - wait finished, false - still waiting for transfer to complete
 */
 bool ConnectionFT601::WaitForReading(int contextHandle, unsigned int timeout_ms)
 {
@@ -476,20 +480,12 @@ bool ConnectionFT601::WaitForReading(int contextHandle, unsigned int timeout_ms)
             if (dwRet == WAIT_OBJECT_0)
                 return 1;
 #else
-        auto t1 = chrono::high_resolution_clock::now();
-        auto t2 = t1;
-
+        //blocking not to waste CPU
         std::unique_lock<std::mutex> lck(contexts[contextHandle].transferLock);
-        while(contexts[contextHandle].done.load() == false && std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count() < timeout_ms)
-        {
-            //blocking not to waste CPU
-            contexts[contextHandle].cv.wait_for(lck, chrono::milliseconds(timeout_ms));
-            t2 = chrono::high_resolution_clock::now();
-        }
-        return contexts[contextHandle].done.load() == true;
+        return contexts[contextHandle].cv.wait_for(lck, chrono::milliseconds(timeout_ms), [&](){return contexts[contextHandle].done.load();});
 #endif
     }
-    return 0;
+    return true;  //there is nothing to wait for (signal wait finished)
 }
 
 /**
@@ -546,14 +542,18 @@ void ConnectionFT601::AbortReading(int ep)
     for(int i = 0; i<USB_MAX_CONTEXTS; ++i)
     {
         if(contexts[i].used)
-            libusb_cancel_transfer(contexts[i].transfer);
+	{
+            if (WaitForReading(i, 100))
+                FinishDataReading(nullptr, 0, i);
+            else
+            	libusb_cancel_transfer(contexts[i].transfer);
+	}
     }
-    FT_FlushPipe(streamRdEp);
     for(int i=0; i<USB_MAX_CONTEXTS; ++i)
     {
         if(contexts[i].used)
         {
-            WaitForReading(i, 250);
+            WaitForReading(i, 100);
             FinishDataReading(nullptr, 0, i);
         }
     }
@@ -589,7 +589,11 @@ int ConnectionFT601::BeginDataSending(const char *buffer, uint32_t length, int e
     FT_InitializeOverlapped(mFTHandle, &contextsToSend[i].inOvLap);
 	ftStatus = FT_WritePipe(mFTHandle, streamWrEp, (unsigned char*)buffer, length, &ulActualBytesSend, &contextsToSend[i].inOvLap);
 	if (ftStatus != FT_IO_PENDING)
-		return -1;
+    {
+        lime::error("ERROR BEGIN DATA SENDING %d", ftStatus);
+        contexts[i].used = false;
+        return -1;
+    }
 #else
     libusb_transfer *tr = contextsToSend[i].transfer;
     contextsToSend[i].done = false;
@@ -610,30 +614,23 @@ int ConnectionFT601::BeginDataSending(const char *buffer, uint32_t length, int e
 @brief Waits for asynchronous data sending
 @param contextHandle handle of which context data to wait
 @param timeout_ms number of miliseconds to wait
-@return 1-data received, 0-data not received
+@return true - wait finished, false - still waiting for transfer to complete
 */
 bool ConnectionFT601::WaitForSending(int contextHandle, unsigned int timeout_ms)
 {
-    if(contextsToSend[contextHandle].used == true)
+    if(contextHandle >= 0 && contextsToSend[contextHandle].used == true)
     {
 #ifndef __unix__
         DWORD dwRet = WaitForSingleObject(contextsToSend[contextHandle].inOvLap.hEvent, timeout_ms);
             if (dwRet == WAIT_OBJECT_0)
                 return 1;
 #else
-        auto t1 = chrono::high_resolution_clock::now();
-        auto t2 = t1;
+        //blocking not to waste CPU
         std::unique_lock<std::mutex> lck(contextsToSend[contextHandle].transferLock);
-        while(contextsToSend[contextHandle].done.load() == false && std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count() < timeout_ms)
-        {
-            //blocking not to waste CPU
-            contextsToSend[contextHandle].cv.wait_for(lck, chrono::milliseconds(timeout_ms));
-            t2 = chrono::high_resolution_clock::now();
-        }
-        return contextsToSend[contextHandle].done == true;
+        return contextsToSend[contextHandle].cv.wait_for(lck, chrono::milliseconds(timeout_ms), [&](){return contextsToSend[contextHandle].done.load();});
 #endif
     }
-    return 0;
+    return true; //there is nothing to wait for (signal wait finished)
 }
 
 /**
@@ -645,7 +642,7 @@ bool ConnectionFT601::WaitForSending(int contextHandle, unsigned int timeout_ms)
 */
 int ConnectionFT601::FinishDataSending(const char *buffer, uint32_t length, int contextHandle)
 {
-    if(contextsToSend[contextHandle].used == true)
+    if(contextHandle >= 0 && contextsToSend[contextHandle].used == true)
     {
 #ifndef __unix__
         ULONG ulActualBytesTransferred ;
@@ -688,13 +685,18 @@ void ConnectionFT601::AbortSending(int ep)
     for(int i = 0; i<USB_MAX_CONTEXTS; ++i)
     {
         if(contextsToSend[i].used)
-            libusb_cancel_transfer(contextsToSend[i].transfer);
+        {
+            if (WaitForSending(i, 100))
+                FinishDataSending(nullptr, 0, i);
+            else
+                libusb_cancel_transfer(contextsToSend[i].transfer);
+        }
     }
     for (int i = 0; i<USB_MAX_CONTEXTS; ++i)
     {
         if(contextsToSend[i].used)
         {
-            WaitForSending(i, 250);
+            WaitForSending(i, 100);
             FinishDataSending(nullptr, 0, i);
         }
     }

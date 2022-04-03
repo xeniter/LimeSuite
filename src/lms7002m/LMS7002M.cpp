@@ -306,7 +306,6 @@ int LMS7002M::EnableChannel(const bool isTx, const bool enable)
     {
         this->Modify_SPI_Reg_bits(LMS7param(EN_DIR_TBB), 1);
         this->Modify_SPI_Reg_bits(LMS7param(EN_G_TBB), enable?1:0);
-        this->Modify_SPI_Reg_bits(LMS7param(PD_LPFH_TBB), enable?0:1);
         this->Modify_SPI_Reg_bits(LMS7param(PD_LPFIAMP_TBB), enable?0:1);
     }
     else
@@ -629,9 +628,21 @@ int LMS7002M::LoadConfig(const char* filename)
                     x0020_value = value;
                     continue;
                 }
-                addrToWrite.push_back(addr);
-                dataToWrite.push_back(value);
+
+                if (addr >= 0x5C3 && addr <= 0x5CA)          //enable analog DC correction
+                {
+                    addrToWrite.push_back(addr);
+                    dataToWrite.push_back(value & 0x3FFF);
+                    addrToWrite.push_back(addr);
+                    dataToWrite.push_back(value | 0x8000);
+                }
+                else
+                {
+                    addrToWrite.push_back(addr);
+                    dataToWrite.push_back(value);
+                }
             }
+
             status = SPI_write_batch(&addrToWrite[0], &dataToWrite[0], addrToWrite.size(), true);
             if (status != 0 && controlPort != nullptr)
                 return status;
@@ -672,7 +683,7 @@ int LMS7002M::LoadConfig(const char* filename)
     return 0;
 }
 
-int LMS7002M:: ResetLogicregisters()
+int LMS7002M::ResetLogicregisters()
 {
     auto x0020_value = SPI_read(0x0020); //reset logic registers
     SPI_write(0x0020, x0020_value & 0x55FF);
@@ -707,7 +718,17 @@ int LMS7002M::SaveConfig(const char* filename)
     this->SetActiveChannel(ChA);
     for (uint16_t i = 0; i < addrToRead.size(); ++i)
     {
+        if (addrToRead[i] >= 0x5C3 && addrToRead[i] <= 0x5CA)
+            SPI_write(addrToRead[i], 0x4000); //perform read-back from DAC
         dataReceived[i] = Get_SPI_Reg_bits(addrToRead[i], 15, 0, false);
+
+        //registers 0x5C3 - 0x53A return inverted value field when DAC value read-back is performed
+        if (addrToRead[i] >= 0x5C3 && addrToRead[i] <= 0x5C6 && (dataReceived[i]&0x400)) //sign bit 10
+            dataReceived[i] = 0x400 | (~dataReceived[i]&0x3FF); //magnitude bits  9:0
+        else if (addrToRead[i] >= 0x5C7 && addrToRead[i] <= 0x5CA && (dataReceived[i]&0x40))  //sign bit 6
+            dataReceived[i] = 0x40 | (~dataReceived[i]&0x3F);   //magnitude bits  5:0
+        else if (addrToRead[i] == 0x5C2)
+            dataReceived[i] &= 0xFF00;   //do not save calibration start triggers
         sprintf(addr, "0x%04X", addrToRead[i]);
         sprintf(value, "0x%04X", dataReceived[i]);
         fout << addr << "=" << value << endl;
@@ -954,7 +975,7 @@ int LMS7002M::SetTBBIAMP_dB(const float_type gain)
     }
 
     int g_iamp = (float_type)opt_gain_tbb[ind]*pow(10.0,gain/20.0)+0.4;
-    Modify_SPI_Reg_bits(LMS7param(CG_IAMP_TBB),g_iamp > 63 ? 63 : g_iamp, true);
+    Modify_SPI_Reg_bits(LMS7param(CG_IAMP_TBB),g_iamp > 63 ? 63 : g_iamp<1 ? 1 :g_iamp , true);
 
     return 0;
 }
@@ -1106,9 +1127,10 @@ int LMS7002M::SetFrequencyCGEN(const float_type freq_Hz, const bool retainNCOfre
         }
     }
     //VCO frequency selection according to F_CLKH
-    uint8_t iHdiv_high = (2.94e9/2 / freq_Hz)-1;
-    uint8_t iHdiv_low = (1.93e9/2 / freq_Hz);
-    uint8_t iHdiv = (iHdiv_low + iHdiv_high)/2;
+    uint16_t iHdiv_high =(gCGEN_VCO_frequencies[1]/2 / freq_Hz)-1;
+    uint16_t iHdiv_low = (gCGEN_VCO_frequencies[0]/2 / freq_Hz);
+    uint16_t iHdiv = (iHdiv_low + iHdiv_high)/2;
+    iHdiv = iHdiv > 255 ? 255 : iHdiv;
     dFvco = 2 * (iHdiv+1) * freq_Hz;
     if (dFvco <= gCGEN_VCO_frequencies[0] || dFvco >= gCGEN_VCO_frequencies[1])
         return ReportError(ERANGE, "SetFrequencyCGEN(%g MHz) - cannot deliver requested frequency", freq_Hz / 1e6);
@@ -1390,7 +1412,7 @@ uint16_t LMS7002M::Get_SPI_Reg_bits(const LMS7Parameter &param, bool fromChip)
 */
 uint16_t LMS7002M::Get_SPI_Reg_bits(uint16_t address, uint8_t msb, uint8_t lsb, bool fromChip)
 {
-    return (SPI_read(address, fromChip) & (~(~0<<(msb+1)))) >> lsb; //shift bits to LSB
+    return (SPI_read(address, fromChip) & (~(~0u<<(msb+1)))) >> lsb; //shift bits to LSB
 }
 
 /** @brief Change given parameter value
@@ -1411,7 +1433,7 @@ int LMS7002M::Modify_SPI_Reg_bits(const LMS7Parameter &param, const uint16_t val
 int LMS7002M::Modify_SPI_Reg_bits(const uint16_t address, const uint8_t msb, const uint8_t lsb, const uint16_t value, bool fromChip)
 {
     uint16_t spiDataReg = SPI_read(address, fromChip); //read current SPI reg data
-    uint16_t spiMask = (~(~0 << (msb - lsb + 1))) << (lsb); // creates bit mask
+    uint16_t spiMask = (~(~0u << (msb - lsb + 1))) << (lsb); // creates bit mask
     spiDataReg = (spiDataReg & (~spiMask)) | ((value << lsb) & spiMask);//clear bits
     return SPI_write(address, spiDataReg); //write modified data back to SPI reg
 }
@@ -1552,20 +1574,28 @@ int LMS7002M::SetFrequencySX(bool tx, float_type freq_Hz, SX_details* output)
 
     canDeliverFrequency = false;
     int tuneScore[] = { -128, -128, -128 }; //best is closest to 0
-    for (sel_vco = 0; sel_vco < 3; ++sel_vco)
+    for (int i = 0; i < 5; i++)  //attempt tune multiple times
     {
-        Modify_SPI_Reg_bits(LMS7param(SEL_VCO), sel_vco);
-        int status = TuneVCO(tx ? VCO_SXT : VCO_SXR);
-        if(status == 0)
+        for (sel_vco = 0; sel_vco < 3; ++sel_vco)
         {
-            tuneScore[sel_vco] = -128 + Get_SPI_Reg_bits(LMS7param(CSW_VCO), true);
-            canDeliverFrequency = true;
+            Modify_SPI_Reg_bits(LMS7param(SEL_VCO), sel_vco);
+            int status = TuneVCO(tx ? VCO_SXT : VCO_SXR);
+            if(status == 0)
+            {
+                tuneScore[sel_vco] = -128 + Get_SPI_Reg_bits(LMS7param(CSW_VCO), true);
+                canDeliverFrequency = true;
+            }
+            lime::debug("%s : csw=%d %s", vcoNames[sel_vco], tuneScore[sel_vco]+128, (status == 0 ? "tune ok" : "tune fail"));
         }
-        lime::debug("%s : csw=%d %s",
-                    vcoNames[sel_vco],
-                    tuneScore[sel_vco]+128,
-                    (status == 0 ? "tune ok" : "tune fail"));
+        if (canDeliverFrequency)  //tune OK
+            break;
+        auto bias = Get_SPI_Reg_bits(LMS7param(ICT_VCO));
+        if (bias == 255)
+            break;
+        bias = bias + 32 > 255 ? 255 : bias + 32; //retry with higher bias current
+        Modify_SPI_Reg_bits(LMS7param(ICT_VCO), bias);
     }
+
     if (abs(tuneScore[0]) < abs(tuneScore[1]))
     {
         if (abs(tuneScore[0]) < abs(tuneScore[2]))
@@ -2480,7 +2510,7 @@ int LMS7002M::SetInterfaceFrequency(float_type cgen_freq_Hz, const uint8_t inter
     {
         Modify_SPI_Reg_bits(LMS7param(TXTSPCLKA_DIV), 0);
         Modify_SPI_Reg_bits(LMS7param(TXDIVEN), false);
-        Modify_SPI_Reg_bits(LMS7param(MCLK1SRC), (mclk1src & 1) | 0x2);
+        status = Modify_SPI_Reg_bits(LMS7param(MCLK1SRC), (mclk1src & 1) | 0x2);
     }
     else
     {
@@ -2490,7 +2520,7 @@ int LMS7002M::SetInterfaceFrequency(float_type cgen_freq_Hz, const uint8_t inter
         else
             Modify_SPI_Reg_bits(LMS7param(TXTSPCLKA_DIV), 0);
         Modify_SPI_Reg_bits(LMS7param(TXDIVEN), true);
-        Modify_SPI_Reg_bits(LMS7param(MCLK1SRC), mclk1src & 1);
+        status = Modify_SPI_Reg_bits(LMS7param(MCLK1SRC), mclk1src & 1);
     }
 
     if (Get_SPI_Reg_bits(LMS7param(TX_MUX)) == 0)
@@ -2500,7 +2530,7 @@ int LMS7002M::SetInterfaceFrequency(float_type cgen_freq_Hz, const uint8_t inter
         Modify_SPI_Reg_bits(LMS7param(TXWRCLK_MUX), 0);
     }
 
-    return ResetLogicregisters();
+    return status;
 }
 
 float_type LMS7002M::GetSampleRate(bool tx, Channel ch)
@@ -2697,8 +2727,8 @@ float_type LMS7002M::GetTemperature()
     float Vptat = reg606 & 0xFF;
     Vptat *= 1.84;
     float Vdiff = Vptat-Vtemp;
-    Vdiff /= 3.9;
-    float temperature = 50.7+Vdiff;
+    Vdiff /= 1.05;
+    float temperature = 45.0+Vdiff;
     Modify_SPI_Reg_bits(LMS7_MUX_BIAS_OUT, biasMux);
     lime::debug("Vtemp 0x%04X, Vptat 0x%04X, Vdiff = %.2f, temp= %.3f", (reg606 >> 8) & 0xFF, reg606 & 0xFF, Vdiff, temperature);
     return temperature;

@@ -5,6 +5,7 @@
 */
 
 #include "lime/LimeSuite.h"
+#include <ConnectionRegistry.h>
 #include <iostream>
 #include <cstdlib>
 #include <cstddef>
@@ -41,18 +42,30 @@ int deviceCalSweep(
         std::cerr << "Unknown directions --dir=" << dirStr << std::endl;
         return EXIT_FAILURE;
     }
-
+    
     //open the device
     lms_device_t *device(nullptr);
-    if (LMS_Open(&device, argStr.empty()?nullptr:argStr.c_str(), nullptr) != 0)
+  
+    lime::ConnectionHandle hint(argStr);
+    auto handles = lime::ConnectionRegistry::findConnections(hint);
+
+    if(handles.size() == 0)
     {
-        std::cerr << "Failed to open: " << LMS_GetLastErrorMessage() << std::endl;
+        std::cerr << "No available device!" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    std::cout << "Connected to [" << handles[0].ToString() << "]" << std::endl;
+
+    if (LMS_Open(&device, handles[0].serialize().c_str(), nullptr) != 0)
+    {
+        std::cerr << "Failed to open" << std::endl;
         return EXIT_FAILURE;
     }
 
     if (LMS_EnableCache(device, true) != 0)
     {
-        std::cerr << "Failed to enable cal cache: " << LMS_GetLastErrorMessage() << std::endl;
+        std::cerr << "Failed to enable cal cache" << std::endl;
         return EXIT_FAILURE;
     }
 
@@ -103,12 +116,12 @@ int deviceCalSweep(
             {
                 if (LMS_SetLOFrequency(device, chanConfig.first, chanConfig.second, freq) != 0)
                 {
-                    std::cerr << "Error tuning (skipping): " << LMS_GetLastErrorMessage() << std::endl;
+                    std::cerr << "Error tuning (skipping)" << std::endl;
                     continue;
                 }
                 if (LMS_Calibrate(device, chanConfig.first, chanConfig.second, bw, 0) != 0)
                 {
-                    std::cerr << "Error calibrating (skipping): " << LMS_GetLastErrorMessage() << std::endl;
+                    std::cerr << "Error calibrating (skipping)" << std::endl;
                     continue;
                 }
             }
